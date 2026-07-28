@@ -15,7 +15,6 @@ import { toCoordinates } from '@/lib/geo';
 import { createClient } from '@/lib/supabase/client';
 import type { Database } from '@/types/supabase';
 
-const supabase = createClient();
 const OPEN_STATUSES = ['new', 'validated', 'in_progress'] as const;
 const OPEN_STATUS_SET = new Set<IncidentRow['status']>(OPEN_STATUSES);
 
@@ -102,6 +101,14 @@ export function RealtimeIncidentMapDemo({
 
   useEffect(() => {
     let isMounted = true;
+
+    let supabase: ReturnType<typeof createClient>;
+    try {
+      supabase = createClient();
+    } catch (error) {
+      console.error('Failed to start realtime incident updates:', error);
+      return;
+    }
 
     const handleChange = (
       payload: RealtimePostgresChangesPayload<IncidentRow>
