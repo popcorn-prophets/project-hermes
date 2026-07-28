@@ -9,45 +9,50 @@ import { hashInviteToken } from './utils';
 import type { AppRole, AuthUser, InvitePreview, RoleAssignment } from './types';
 
 export const getCurrentUser = cache(async (): Promise<AuthUser | null> => {
-  const supabase = await createClient();
-  const { data } = await supabase.auth.getClaims();
-  const claims = data?.claims;
+  try {
+    const supabase = await createClient();
+    const { data } = await supabase.auth.getClaims();
+    const claims = data?.claims;
 
-  const userId = typeof claims?.sub === 'string' ? claims.sub : null;
+    const userId = typeof claims?.sub === 'string' ? claims.sub : null;
 
-  if (!userId) {
+    if (!userId) {
+      return null;
+    }
+
+    const [
+      { data: roles, error: rolesError },
+      { data: profile, error: profileError },
+    ] = await Promise.all([
+      supabase
+        .from('role_assignments')
+        .select('role, scope_type, scope_id')
+        .eq('user_id', userId),
+      supabase
+        .from('profiles')
+        .select('full_name')
+        .eq('id', userId)
+        .maybeSingle(),
+    ]);
+
+    if (rolesError) {
+      throw rolesError;
+    }
+
+    if (profileError) {
+      throw profileError;
+    }
+
+    return {
+      id: userId,
+      email: typeof claims?.email === 'string' ? claims.email : null,
+      fullName: profile?.full_name ?? null,
+      roles: (roles ?? []) as RoleAssignment[],
+    };
+  } catch (error) {
+    console.error('Failed to resolve current user:', error);
     return null;
   }
-
-  const [
-    { data: roles, error: rolesError },
-    { data: profile, error: profileError },
-  ] = await Promise.all([
-    supabase
-      .from('role_assignments')
-      .select('role, scope_type, scope_id')
-      .eq('user_id', userId),
-    supabase
-      .from('profiles')
-      .select('full_name')
-      .eq('id', userId)
-      .maybeSingle(),
-  ]);
-
-  if (rolesError) {
-    throw rolesError;
-  }
-
-  if (profileError) {
-    throw profileError;
-  }
-
-  return {
-    id: userId,
-    email: typeof claims?.email === 'string' ? claims.email : null,
-    fullName: profile?.full_name ?? null,
-    roles: (roles ?? []) as RoleAssignment[],
-  };
 });
 
 export function userHasRole(
@@ -78,14 +83,19 @@ export async function requireRole(allowed: AppRole[]) {
 }
 
 export const isBootstrapRegistrationOpen = cache(async () => {
-  const supabase = await createClient();
-  const { data, error } = await supabase.rpc('bootstrap_registration_open');
+  try {
+    const supabase = await createClient();
+    const { data, error } = await supabase.rpc('bootstrap_registration_open');
 
-  if (error) {
-    throw error;
+    if (error) {
+      throw error;
+    }
+
+    return Boolean(data);
+  } catch (error) {
+    console.error('Failed to check bootstrap registration status:', error);
+    return false;
   }
-
-  return Boolean(data);
 });
 
 export async function getInvitePreviewByToken(
