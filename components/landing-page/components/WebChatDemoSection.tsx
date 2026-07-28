@@ -38,43 +38,47 @@ const OPEN_STATUSES = ['new', 'validated', 'in_progress'] as const;
 async function loadLiveIncidentMarkers(): Promise<IncidentMarker[]> {
   noStore();
 
-  const admin = createAdminClient();
-  const { data, error } = await admin
-    .from('incidents')
-    .select(
-      'id, description, incident_time, location, location_description, severity, status'
-    )
-    .in('status', OPEN_STATUSES);
+  try {
+    const admin = createAdminClient();
+    const { data, error } = await admin
+      .from('incidents')
+      .select(
+        'id, description, incident_time, location, location_description, severity, status'
+      )
+      .in('status', OPEN_STATUSES);
 
-  if (error) {
+    if (error) {
+      throw error;
+    }
+
+    const incidents = (data ?? []) as IncidentRow[];
+
+    return incidents.flatMap((incident) => {
+      const { longitude, latitude } = toCoordinates(incident.location);
+
+      if (longitude === null || latitude === null) {
+        return [];
+      }
+
+      return [
+        {
+          id: incident.id,
+          longitude,
+          latitude,
+          label:
+            incident.location_description ??
+            `${String(incident.severity ?? 'unknown').toUpperCase()} · ${String(incident.status ?? 'unknown').replace('_', ' ')}`,
+          severity: incident.severity,
+          status: incident.status,
+          description: incident.description,
+          incidentTime: incident.incident_time,
+        },
+      ];
+    });
+  } catch (error) {
     console.error('Failed to load landing page incident markers:', error);
     return [];
   }
-
-  const incidents = (data ?? []) as IncidentRow[];
-
-  return incidents.flatMap((incident) => {
-    const { longitude, latitude } = toCoordinates(incident.location);
-
-    if (longitude === null || latitude === null) {
-      return [];
-    }
-
-    return [
-      {
-        id: incident.id,
-        longitude,
-        latitude,
-        label:
-          incident.location_description ??
-          `${String(incident.severity ?? 'unknown').toUpperCase()} · ${String(incident.status ?? 'unknown').replace('_', ' ')}`,
-        severity: incident.severity,
-        status: incident.status,
-        description: incident.description,
-        incidentTime: incident.incident_time,
-      },
-    ];
-  });
 }
 
 export async function WebChatDemoSection() {

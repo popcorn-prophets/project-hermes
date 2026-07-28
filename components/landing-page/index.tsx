@@ -1,4 +1,6 @@
 import { AuthButton } from '@/components/auth-button';
+import { ErrorBoundary } from '@/components/error-boundary';
+import Link from 'next/link';
 import { Suspense } from 'react';
 import { ChallengesSection } from './components/ChallengeSection';
 import { ContactSection } from './components/ContactSection';
@@ -21,18 +23,39 @@ export default function LandingPage() {
       <div className="flex-1 w-full flex flex-col gap-20 items-center">
         <Navbar
           desktopAuthButton={
-            <Suspense>
-              <AuthButton />
-            </Suspense>
+            <ErrorBoundary fallback={<Link href="/auth/login">Sign in</Link>}>
+              <Suspense>
+                <AuthButton />
+              </Suspense>
+            </ErrorBoundary>
           }
           mobileAuthButton={
-            <Suspense>
-              <AuthButton fullWidth size="lg" />
-            </Suspense>
+            <ErrorBoundary fallback={<Link href="/auth/login">Sign in</Link>}>
+              <Suspense>
+                <AuthButton fullWidth size="lg" />
+              </Suspense>
+            </ErrorBoundary>
           }
         />
         <HeroSection />
-        <WebChatDemoSection />
+        <ErrorBoundary
+          fallback={
+            <div className="w-full max-w-7xl px-4 py-12 text-center text-muted-foreground">
+              The live chat and map demo is temporarily unavailable. Try opening
+              the{' '}
+              <Link href="/chat" className="underline">
+                web chat
+              </Link>{' '}
+              or{' '}
+              <Link href="/control-center" className="underline">
+                control center
+              </Link>{' '}
+              directly.
+            </div>
+          }
+        >
+          <WebChatDemoSection />
+        </ErrorBoundary>
         <StatSection />
         <ChallengesSection />
         <AboutSection />
