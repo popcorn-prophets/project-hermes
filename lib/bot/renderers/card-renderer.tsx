@@ -1,5 +1,6 @@
 /** @jsxImportSource chat */
 import type { BotThread } from '@/lib/bot/types';
+import { postWithRetry } from '@/lib/bot/utils/post-with-retry';
 import { Actions, Button, Card, CardText } from 'chat';
 import type { SelectionOption } from '../steps/step-types';
 
@@ -38,7 +39,8 @@ export async function renderCard(
   thread: BotThread,
   options: CardOptions
 ): Promise<void> {
-  await thread.post(
+  await postWithRetry(
+    thread,
     <Card title={options.title}>
       <CardText>{options.content}</CardText>
     </Card>
@@ -52,7 +54,8 @@ export async function renderSelectionCard(
   thread: BotThread,
   options: SelectionCardOptions
 ): Promise<void> {
-  await thread.post(
+  await postWithRetry(
+    thread,
     <Card>
       <CardText>{options.title}</CardText>
       {options.content ? <CardText>{options.content}</CardText> : null}
@@ -82,7 +85,8 @@ export async function renderIdleCommandCard(
     .map((option) => `${option.command}: ${option.description}`)
     .join('\n');
 
-  await thread.post(
+  await postWithRetry(
+    thread,
     <Card>
       <CardText>{options.title}</CardText>
       {options.content ? <CardText>{options.content}</CardText> : null}
