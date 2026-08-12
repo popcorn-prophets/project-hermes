@@ -14,6 +14,7 @@ import {
 import type { ResidentLocale } from '@/lib/bot/i18n/types';
 import { renderIdleCommandCard } from '@/lib/bot/renderers/card-renderer';
 import type { BotThread } from '@/lib/bot/types';
+import { postWithRetry } from '@/lib/bot/utils/post-with-retry';
 import { formatRelativeTime } from '@/lib/date';
 import { createAdminClient } from '@/lib/supabase/admin';
 
@@ -83,7 +84,7 @@ export function registerMessageHandlers(bot: BotInstance) {
       const statuses = await fetchResidentIncidentStatuses(thread, 5);
 
       if (statuses.length === 0) {
-        await thread.post(translate('incident.status.empty', locale));
+        await postWithRetry(thread, translate('incident.status.empty', locale));
         return true;
       }
 
@@ -104,7 +105,8 @@ export function registerMessageHandlers(bot: BotInstance) {
         ].join(' | ');
       });
 
-      await thread.post(
+      await postWithRetry(
+        thread,
         [
           translate('incident.status.title', locale),
           ...rows.map((row) => `- ${row}`),
@@ -114,7 +116,8 @@ export function registerMessageHandlers(bot: BotInstance) {
       return true;
     } catch (error) {
       console.error('Error fetching report statuses:', error);
-      await thread.post(
+      await postWithRetry(
+        thread,
         error instanceof Error
           ? error.message
           : translate('handler.error', locale)
@@ -203,7 +206,7 @@ export function registerMessageHandlers(bot: BotInstance) {
 
     if (visitedFlowIds.has(flow.id)) {
       console.error(`Detected cyclic flow fallback while starting ${flow.id}`);
-      await thread.post(translate('error.flow.cyclic', locale));
+      await postWithRetry(thread, translate('error.flow.cyclic', locale));
       return false;
     }
 
@@ -211,11 +214,12 @@ export function registerMessageHandlers(bot: BotInstance) {
 
     if (flow.start?.requiresResident && !context.hasResident) {
       if (flow.start.missingResidentMessageKey) {
-        await thread.post(
+        await postWithRetry(
+          thread,
           translate(flow.start.missingResidentMessageKey, locale)
         );
       } else if (flow.start.missingResidentMessage) {
-        await thread.post(flow.start.missingResidentMessage);
+        await postWithRetry(thread, flow.start.missingResidentMessage);
       }
 
       const fallbackFlowId = flow.start.fallbackFlowId;
@@ -226,7 +230,10 @@ export function registerMessageHandlers(bot: BotInstance) {
       const fallbackFlow = flowRegistry.get(fallbackFlowId);
       if (!fallbackFlow) {
         console.error(`Fallback flow not registered: ${fallbackFlowId}`);
-        await thread.post(translate('error.flow.start_error', locale));
+        await postWithRetry(
+          thread,
+          translate('error.flow.start_error', locale)
+        );
         return false;
       }
 
@@ -286,14 +293,14 @@ export function registerMessageHandlers(bot: BotInstance) {
   } | null> {
     const state = (await thread.state) as FlowThreadState | null;
     if (!state) {
-      await thread.post(translate('error.flow.invalid_step'));
+      await postWithRetry(thread, translate('error.flow.invalid_step'));
       return null;
     }
 
     const flow = flowRegistry.get(state.flowId);
     if (!flow) {
       console.error(`Flow not registered: ${state.flowId}`);
-      await thread.post(translate('handler.error', state.locale));
+      await postWithRetry(thread, translate('handler.error', state.locale));
       return null;
     }
 
@@ -381,7 +388,8 @@ export function registerMessageHandlers(bot: BotInstance) {
     await ensureSelectionStepOptions(thread, flow, state);
 
     if (flowEngine.isFlowComplete(flow, state)) {
-      await thread.post(
+      await postWithRetry(
+        thread,
         translate('handler.flow_already_complete', state.locale)
       );
       return;
@@ -405,7 +413,7 @@ export function registerMessageHandlers(bot: BotInstance) {
     );
 
     if (result.response) {
-      await thread.post(result.response);
+      await postWithRetry(thread, result.response);
     }
 
     await thread.setState(result.nextState);
@@ -437,11 +445,11 @@ export function registerMessageHandlers(bot: BotInstance) {
         ? translate('handler.start.welcome_back', locale)
         : translate('handler.start.welcome', locale);
 
-      await thread.post(welcomeMsg);
+      await postWithRetry(thread, welcomeMsg);
       await postAvailableCommandHint(thread as BotThread, locale);
     } catch (error) {
       console.error('Error in onNewMention handler:', error);
-      await thread.post(translate('error.unexpected'));
+      await postWithRetry(thread, translate('error.unexpected'));
     }
   });
 
@@ -455,7 +463,7 @@ export function registerMessageHandlers(bot: BotInstance) {
       // Allow user to stop the bot
       if (normalizeText(userText) === 'stop') {
         const locale = await resolveThreadLocale(thread as BotThread);
-        await thread.post(translate('handler.stop', locale));
+        await postWithRetry(thread, translate('handler.stop', locale));
         await thread.unsubscribe();
         return;
       }
@@ -491,7 +499,7 @@ export function registerMessageHandlers(bot: BotInstance) {
 
       const flow = flowRegistry.get(state.flowId);
       if (!flow) {
-        await thread.post(translate('handler.error', state.locale));
+        await postWithRetry(thread, translate('handler.error', state.locale));
         return;
       }
 
@@ -503,7 +511,7 @@ export function registerMessageHandlers(bot: BotInstance) {
       await processFlowInput(thread as BotThread, message);
     } catch (error) {
       console.error('Error processing message:', error);
-      await thread.post(translate('handler.error'));
+      await postWithRetry(thread, translate('handler.error'));
     }
   });
 
@@ -554,7 +562,7 @@ export function registerMessageHandlers(bot: BotInstance) {
     } catch (error) {
       console.error('Error handling action event:', error);
       const locale = await resolveThreadLocale(event.thread as BotThread);
-      await event.thread.post(translate('handler.error', locale));
+      await postWithRetry(event.thread, translate('handler.error', locale));
     }
   });
 }
