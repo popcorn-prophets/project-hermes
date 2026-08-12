@@ -1,3 +1,4 @@
+import { waitUntil } from '@vercel/functions';
 import { bot } from '@/lib/bot';
 
 type Platform = keyof typeof bot.webhooks;
@@ -11,7 +12,7 @@ export async function POST(
   if (!handler) {
     return new Response(`Unknown platform: ${platform}`, { status: 404 });
   }
-  return handler(request);
+  return handler(request, { waitUntil });
 }
 
 // Serves as health check, but also forwards to webhook handler
