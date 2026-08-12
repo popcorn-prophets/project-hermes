@@ -53,7 +53,8 @@ export async function renderSelectionCard(
   options: SelectionCardOptions
 ): Promise<void> {
   await thread.post(
-    <Card title={options.title}>
+    <Card>
+      <CardText>{options.title}</CardText>
       {options.content ? <CardText>{options.content}</CardText> : null}
       <Actions>
         {options.options.map((option) => (
@@ -82,7 +83,8 @@ export async function renderIdleCommandCard(
     .join('\n');
 
   await thread.post(
-    <Card title={options.title}>
+    <Card>
+      <CardText>{options.title}</CardText>
       {options.content ? <CardText>{options.content}</CardText> : null}
       <Actions>
         {options.options.map((option) => (
