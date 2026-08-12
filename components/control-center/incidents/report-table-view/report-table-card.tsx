@@ -1,6 +1,7 @@
 'use client';
 
 import { Incident, fetchAllIncidents } from '@/lib/supabase/reports';
+import { useIncidentsRealtime } from '@/lib/supabase/use-incidents-realtime';
 import * as React from 'react';
 import { columns } from './report-columns';
 import { ReportTable } from './report-table';
@@ -15,17 +16,20 @@ export function ReportTableCard() {
     null
   );
 
-  React.useEffect(() => {
-    const loadIncidents = async () => {
-      try {
-        const data = await getData();
-        setIncidentData(data);
-      } catch (error) {
-        console.error('Failed to load incidents:', error);
-      }
-    };
-    loadIncidents();
+  const loadIncidents = React.useCallback(async () => {
+    try {
+      const data = await getData();
+      setIncidentData(data);
+    } catch (error) {
+      console.error('Failed to load incidents:', error);
+    }
   }, []);
+
+  React.useEffect(() => {
+    void loadIncidents();
+  }, [loadIncidents]);
+
+  useIncidentsRealtime(loadIncidents);
 
   return (
     <div className="py-10 w-full h-full">

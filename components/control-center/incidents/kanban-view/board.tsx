@@ -82,6 +82,7 @@ import {
   type IncidentStatus,
 } from '@/lib/incidents/shared';
 import { fetchIncidentBoardEntries } from '@/lib/supabase/reports';
+import { useIncidentsRealtime } from '@/lib/supabase/use-incidents-realtime';
 import { cn } from '@/lib/utils';
 
 type IncidentKanbanBoardProps = {
@@ -542,6 +543,8 @@ export default function IncidentKanbanBoard({
   React.useEffect(() => {
     void loadIncidents();
   }, [loadIncidents]);
+
+  useIncidentsRealtime(loadIncidents);
 
   React.useEffect(() => {
     if (!selectedIncidentId && detailsOpen) {
