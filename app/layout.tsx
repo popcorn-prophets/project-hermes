@@ -1,4 +1,7 @@
+import { ConnectivityStatus } from '@/components/pwa/connectivity-status';
+import { ServiceWorkerRegister } from '@/components/pwa/sw-register';
 import { ThemeProvider } from '@/components/theme-provider'; // Updated to use local wrapper
+import { Toaster } from '@/components/ui/sonner';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
@@ -38,6 +41,9 @@ export default function RootLayout({
           <TooltipProvider>
             {/* Suspense is moved inside the providers to avoid hydration script conflicts */}
             <Suspense fallback={null}>{children}</Suspense>
+            <ServiceWorkerRegister />
+            <ConnectivityStatus />
+            <Toaster />
           </TooltipProvider>
         </ThemeProvider>
       </body>
