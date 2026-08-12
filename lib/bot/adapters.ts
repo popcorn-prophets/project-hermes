@@ -1,6 +1,6 @@
 import { createPostgresState } from '@chat-adapter/state-pg';
 import { createTelegramAdapter } from '@chat-adapter/telegram';
-import { createMessengerAdapter } from 'chat-adapter-messenger';
+import { createMessengerAdapter } from '@chat-adapter/messenger';
 import { createWebChatAdapter } from './adapters/web-chat';
 
 const telegram = createTelegramAdapter({
