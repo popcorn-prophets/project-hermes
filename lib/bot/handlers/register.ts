@@ -2,8 +2,16 @@ import type { BotInstance } from '@/lib/bot/chat';
 import { flowEngine } from '@/lib/bot/flows/flow-engine';
 import { getThreadLocaleFromState } from '@/lib/bot/flows/flow-locale';
 import { flowRegistry } from '@/lib/bot/flows/flow-registry';
-import type { Flow, FlowThreadState } from '@/lib/bot/flows/flow-types';
-import { fetchResidentIncidentStatuses } from '@/lib/bot/flows/incident-reporting-service';
+import type {
+  Flow,
+  FlowData,
+  FlowThreadState,
+} from '@/lib/bot/flows/flow-types';
+import {
+  fetchIncidentTypeNames,
+  fetchResidentIncidentStatuses,
+} from '@/lib/bot/flows/incident-reporting-service';
+import { classifyChatIntent } from '@/lib/bot/flows/intent-classifier';
 import {
   DEFAULT_LOCALE,
   localizeIncidentSeverity,
@@ -16,7 +24,11 @@ import { renderIdleCommandCard } from '@/lib/bot/renderers/card-renderer';
 import type { BotThread } from '@/lib/bot/types';
 import { postWithRetry } from '@/lib/bot/utils/post-with-retry';
 import { formatRelativeTime } from '@/lib/date';
+import { toPoint } from '@/lib/geo';
+import { createDefaultGeocodingService } from '@/lib/geocoding';
 import { createAdminClient } from '@/lib/supabase/admin';
+
+const geocodingService = createDefaultGeocodingService();
 
 interface IdleCommands {
   guidedReportCommand: string;
@@ -200,7 +212,8 @@ export function registerMessageHandlers(bot: BotInstance) {
     thread: BotThread,
     flow: Flow,
     context: { hasResident: boolean },
-    visitedFlowIds: Set<string> = new Set()
+    visitedFlowIds: Set<string> = new Set(),
+    prefillData?: FlowData
   ): Promise<boolean> {
     const locale = await resolveThreadLocale(thread);
 
@@ -244,14 +257,106 @@ export function registerMessageHandlers(bot: BotInstance) {
       await flow.onStart(thread);
     }
 
-    const initialState: FlowThreadState = flowEngine.createInitialState(
-      flow.id,
-      1,
-      locale
-    );
+    const initialState: FlowThreadState = prefillData
+      ? flowEngine.createPrefilledState(flow.id, 1, locale, prefillData)
+      : flowEngine.createInitialState(flow.id, 1, locale);
     await thread.setState(initialState);
     await flowEngine.renderCurrentStep(thread, flow, initialState);
     return true;
+  }
+
+  /**
+   * Classify a free-text message and auto-route it
+   * when no command matched and no flow is active.
+   * This is a convenience layer only.
+   */
+  async function handleIntentClassification(
+    thread: BotThread,
+    userText: string,
+    context: { hasResident: boolean },
+    locale: ResidentLocale
+  ): Promise<boolean> {
+    if (!userText.trim()) {
+      return false;
+    }
+
+    const allowedIncidentTypeNames = await fetchIncidentTypeNames().catch(
+      (error) => {
+        console.error(
+          'Failed to load incident types for intent classification:',
+          error
+        );
+        return [];
+      }
+    );
+
+    const classified = await classifyChatIntent({
+      text: userText,
+      allowedIncidentTypeNames,
+    });
+
+    if (classified.intent === 'status') {
+      return handleReportStatusQuery(thread, 'status', locale);
+    }
+
+    if (classified.intent === 'settings') {
+      const settingsFlow = flowRegistry.get('resident-thread-settings');
+      if (!settingsFlow) {
+        return false;
+      }
+      return startFlow(thread, settingsFlow, context);
+    }
+
+    if (classified.intent === 'incident_report') {
+      const incidentFlow = flowRegistry.get('incident-reporting');
+      if (!incidentFlow) {
+        return false;
+      }
+
+      const prefillData: FlowData = {};
+      if (classified.incidentTypeName) {
+        prefillData.incidentTypeName = classified.incidentTypeName;
+      }
+      if (classified.severity) {
+        prefillData.severity = classified.severity;
+      }
+      if (classified.description) {
+        prefillData.description = classified.description;
+      }
+      if (classified.locationDescription) {
+        try {
+          const geocodingResults = await geocodingService.forwardGeocode(
+            classified.locationDescription,
+            { limit: 1 }
+          );
+          const bestMatch = geocodingResults[0];
+          if (bestMatch?.point) {
+            const point = toPoint(bestMatch.point);
+            if (point) {
+              prefillData.location = {
+                ...point,
+                locationDescription: classified.locationDescription,
+              };
+            }
+          }
+        } catch (error) {
+          console.error(
+            'Intent classification location geocoding error:',
+            error
+          );
+        }
+      }
+
+      return startFlow(
+        thread,
+        incidentFlow,
+        context,
+        new Set(),
+        Object.keys(prefillData).length > 0 ? prefillData : undefined
+      );
+    }
+
+    return false;
   }
 
   async function handleFlowStartCommand(
@@ -490,21 +595,34 @@ export function registerMessageHandlers(bot: BotInstance) {
       }
 
       const state = (await thread.state) as FlowThreadState | null;
+      const activeFlow = state ? flowRegistry.get(state.flowId) : undefined;
 
-      if (!state) {
-        const locale = await resolveThreadLocale(thread as BotThread);
-        await postAvailableCommandHint(thread as BotThread, locale);
-        return;
-      }
-
-      const flow = flowRegistry.get(state.flowId);
-      if (!flow) {
+      if (state && !activeFlow) {
         await postWithRetry(thread, translate('handler.error', state.locale));
         return;
       }
 
-      if (flowEngine.isFlowComplete(flow, state)) {
-        await postAvailableCommandHint(thread as BotThread, state.locale);
+      const hasActiveFlow = Boolean(
+        state && activeFlow && !flowEngine.isFlowComplete(activeFlow, state)
+      );
+
+      if (!hasActiveFlow) {
+        const locale = state
+          ? state.locale
+          : await resolveThreadLocale(thread as BotThread);
+
+        if (
+          await handleIntentClassification(
+            thread as BotThread,
+            userText,
+            { hasResident },
+            locale
+          )
+        ) {
+          return;
+        }
+
+        await postAvailableCommandHint(thread as BotThread, locale);
         return;
       }
 

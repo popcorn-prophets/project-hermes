@@ -334,6 +334,35 @@ class FlowEngine {
       locale,
     };
   }
+
+  /**
+   * Create initial flow state pre-filled with already-known data
+   */
+  createPrefilledState(
+    flowId: string,
+    flowVersion: number,
+    locale: ResidentLocale,
+    data: FlowData
+  ): FlowThreadState {
+    const flow = this.getFlow(flowId);
+    const initialState = this.createInitialState(flowId, flowVersion, locale);
+
+    let stepIndex = initialState.stepIndex;
+    while (stepIndex < flow.steps.length) {
+      const step = flow.steps[stepIndex];
+      const dataKey = step.dataKey || step.id;
+      if (data[dataKey] === undefined) {
+        break;
+      }
+      stepIndex += 1;
+    }
+
+    return {
+      ...initialState,
+      stepIndex,
+      data,
+    };
+  }
 }
 
 export const flowEngine = new FlowEngine();
